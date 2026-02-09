@@ -2,6 +2,7 @@ import os
 from bs4 import BeautifulSoup
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
+from datetime import datetime
 
 def parse_html(file_path):
     if not os.path.exists(file_path):
@@ -16,7 +17,15 @@ def parse_html(file_path):
         # Specifically targeting the div containing the order date text
         date_raw = soup.find('div', class_='title_f25').find_next('div', class_='align-items-center').text.strip()
         # Split by " - " and take the first part: "19 Jan 2026"
-        order_date = date_raw.split(' - ')[0].strip()
+        order_date_str = date_raw.split(' - ')[0].strip()
+
+        # Try parsing with flexible formats
+        dt = parse_date_flexible(order_date_str)
+
+        if dt:
+            order_date = dt.strftime("%d %b, %Y")   # → "05 Feb, 2026"
+        else:
+            order_date = "Unknown Date"
     except:
         order_date = "Unknown Date"
 
@@ -42,8 +51,10 @@ def parse_html(file_path):
             # Extract prices
             try:
                 price_cell = cells[2]
-                disc_price = price_cell.find('div', class_='price-new').text.replace('JPY', '').replace(',', '').strip()
-                orig_price = price_cell.find('div', class_='price-old').text.replace('JPY', '').replace(',', '').strip()
+                #disc_price = price_cell.find('div', class_='price-new').text.replace('JPY', '').replace(',', '').strip()
+                #orig_price = price_cell.find('div', class_='price-old').text.replace('JPY', '').replace(',', '').strip()
+                disc_price = get_price(price_cell, 'price-new')
+                orig_price = get_price(price_cell, 'price-old') or disc_price
                 
                 items.append({
                     "name": name,
@@ -55,6 +66,32 @@ def parse_html(file_path):
                 continue
             
     return order_date, items
+def parse_date_flexible(date_str):
+    # Possible formats the site might use
+    formats = [
+        "%d %b %Y",
+        "%d %B %Y",
+        "%d %b, %Y",
+        "%d %B, %Y",
+        "%d %b %Y %H:%M",
+        "%d %B %Y %H:%M",
+        "%Y/%m/%d",
+        "%Y-%m-%d",
+    ]
+
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt)
+        except:
+            pass
+
+    return None  # No format matched
+
+def get_price(cell, class_name):
+    el = cell.find('div', class_=class_name)
+    if not el:
+        return None
+    return el.text.replace('JPY', '').replace(',', '').strip()
 
 def run_app():
     # --- USER INPUTS ---
